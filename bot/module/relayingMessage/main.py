@@ -156,7 +156,9 @@ class ForwardMessage(commands.Cog):
             outch = get(message.guild.text_channels, id=target_id)
             if outch:
                 await self.echomsg(message, outch)
-
+            if message.embeds:
+                for embed in message.embeds:
+                    await outch.send(embed=embed)
 
         
     async def echomsg(self,message: Message, outch: TextChannel):
