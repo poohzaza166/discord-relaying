@@ -156,9 +156,9 @@ class ForwardMessage(commands.Cog):
             outch = get(message.guild.text_channels, id=target_id)
             if outch:
                 await self.echomsg(message, outch)
-            if message.embeds:
-                for embed in message.embeds:
-                    await outch.send(embed=embed)
+            # if message.embeds:
+            #     for embed in message.embeds:
+            #         await outch.send(embed=embed)
 
         
     async def echomsg(self,message: Message, outch: TextChannel):
@@ -172,44 +172,75 @@ class ForwardMessage(commands.Cog):
         outch: TextChannel
             The target channel to forward to
         """
-        emoji_data = await parse_emoji(message.content)
-        print(emoji_data)
-        if len(emoji_data) <= 0:
+        emoji_data = []
+        emoji_data.extend(await parse_emoji(message.content))
+        # print("tttttttttttttttt")
+        # print(message.embeds[0].description)
+        print(len(message.embeds))
+        if  len(message.embeds) >= 1:
+            for i in message.embeds:
+                if i.description:
+                    emoji_data.extend(await parse_emoji(i.description))
+                if i.footer and i.footer.text:
+                    emoji_data.extend(await parse_emoji(i.footer.text))
+                if i.title:
+                    emoji_data.extend(await parse_emoji(i.title))
+        
+        # print(emoji_data)
+        if len(emoji_data) == 0:
             return
         
         # add emoji
         for i in emoji_data:
-            print(i)
             await outch.guild.create_custom_emoji(name=i[1], image=await download_emoji_image(i[0]))
         
-        await outch.send(await self.replace_emoji_mentions(message))
+
+        edited = await self.replace_emoji_mentions(message.content, message.guild)
+        if  len(message.embeds) >= 1:
+            for i in message.embeds:
+                # print(type(i.title))
+                i.title = await self.replace_emoji_mentions(str(i.title),message.guild)
+                i.description = await self.replace_emoji_mentions(str(i.description), message.guild)
+                # i.footer = await self.replace_emoji_mentions(str(i.footer.text), message.guild)
+
+
+        # print(edited)
+        if  len(message.embeds) >= 1:
+            await outch.send(edited, embeds=message.embeds)
+        else:
+            await outch.send(edited)
         # remove emoji
         for i in emoji_data:
             await outch.guild.delete_emoji(get(message.guild.emojis, name=i[1]))
+            
+    async def replace_emoji_mentions(self, message: str, guild) -> str:
+        modified_content = message
+        words = message.split()
         
-        
-
-    async def replace_emoji_mentions(self, message: discord.Message) -> str:
-        modified_content = message.content
-        emoji_pattern = r'<(a?):([a-zA-Z0-9_]+):(\d+)>'
-        
-        # Find all emoji matches
-        matches = re.finditer(emoji_pattern, message.content)
-        
-        for match in matches:
-            animated, emoji_name, emoji_id = match.groups()
-            # Get emoji object from guild
-            emoji = get(message.guild.emojis, name=emoji_name)
-            if emoji:
-                # Replace emoji mention with actual emoji object string
-                emoji_text = match.group(0)  # Original <:name:id> format
-                modified_content = modified_content.replace(emoji_text, str(emoji))
-        
+        for word in words:
+            if word.startswith('<') and word.endswith('>') and ':' in word:
+                try:
+                    # Split emoji components
+                    parts = word[1:-1].split(':')  # Remove < > and split by :
+                    if len(parts) == 3:  # Format: a:name:id or :name:id
+                        animated = parts[0] == 'a'
+                        emoji_name = parts[1]
+                        emoji_id = parts[2]
+                        
+                        # Get emoji object
+                        emoji = get(guild.emojis, name=emoji_name)
+                        if emoji:
+                            modified_content = modified_content.replace(word, str(emoji))
+                except Exception as e:
+                    print(f"Error processing emoji {word}: {e}")
+        print("before")
+        print(message)
+        print("after")
+        print(modified_content)
         return modified_content
 
 async def parse_emoji(message: str):
     emoji_data = []
-    
     for emoji in message.split():
         try:
             if emoji.startswith("<:") or emoji.startswith("<a:"):
