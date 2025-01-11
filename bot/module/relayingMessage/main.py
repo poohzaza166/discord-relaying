@@ -17,6 +17,7 @@ from typing import Dict, List, Union
 import aiohttp
 import discord
 import yaml
+from discord import Thread
 from discord.channel import TextChannel
 from discord.ext import commands
 from discord.ext.commands import Context
@@ -153,66 +154,72 @@ class ForwardMessage(commands.Cog):
         
         # Forward to all target channels
         for target_id in self.listenChannel[message.channel.id]:
-            outch = get(message.guild.text_channels, id=target_id)
-            if outch:
-                await self.echomsg(message, outch)
+            guild = get(self.client.guilds, id=message.guild.id)
+            if guild == None:
+                return
+            target = guild.get_channel_or_thread(target_id)
+            if target:
+                await self.echomsg(message, target)
+
             # if message.embeds:
             #     for embed in message.embeds:
             #         await outch.send(embed=embed)
 
         
-    async def echomsg(self,message: Message, outch: TextChannel):
+    async def echomsg(self, message: Message, outch: Union[TextChannel, Thread]):
         """
-        Process and forward a message to target channel.
+        Process and forward a message to target channel or thread.
         
         Parameters:
         -----------
         message: Message
             The original message to forward
-        outch: TextChannel
-            The target channel to forward to
+        outch: Union[TextChannel, Thread]
+            The target channel or thread to forward to
         """
         emoji_data = []
         emoji_data.extend(await parse_emoji(message.content))
-        # print("tttttttttttttttt")
-        # print(message.embeds[0].description)
-        print(len(message.embeds))
-        if  len(message.embeds) >= 1:
-            for i in message.embeds:
-                if i.description:
-                    emoji_data.extend(await parse_emoji(i.description))
-                if i.footer and i.footer.text:
-                    emoji_data.extend(await parse_emoji(i.footer.text))
-                if i.title:
-                    emoji_data.extend(await parse_emoji(i.title))
         
-        # print(emoji_data)
+        for embed in message.embeds:
+            if embed.description:
+                emoji_data.extend(await parse_emoji(embed.description))
+            if embed.footer and embed.footer.text:
+                emoji_data.extend(await parse_emoji(embed.footer.text))
+            if embed.title:
+                emoji_data.extend(await parse_emoji(embed.title))
+        
+        # Remove emojis that already exist in the server
+        existing_emojis = {emoji.name for emoji in outch.guild.emojis}
+        emoji_data = [emoji for emoji in emoji_data if emoji[1] not in existing_emojis]
+        
         if len(emoji_data) == 0:
+            if message.content != None:
+                await outch.send(message.content)
+            if message.embeds != None:
+                await outch.send(embeds=message.embeds)
             return
         
-        # add emoji
-        for i in emoji_data:
-            await outch.guild.create_custom_emoji(name=i[1], image=await download_emoji_image(i[0]))
+        for emoji_url, emoji_name in emoji_data:
+            await outch.guild.create_custom_emoji(name=emoji_name, image=await download_emoji_image(emoji_url))
         
-
-        edited = await self.replace_emoji_mentions(message.content, message.guild)
-        if  len(message.embeds) >= 1:
-            for i in message.embeds:
-                # print(type(i.title))
-                i.title = await self.replace_emoji_mentions(str(i.title),message.guild)
-                i.description = await self.replace_emoji_mentions(str(i.description), message.guild)
-                # i.footer = await self.replace_emoji_mentions(str(i.footer.text), message.guild)
-
-
-        # print(edited)
-        if  len(message.embeds) >= 1:
-            await outch.send(edited, embeds=message.embeds)
+        edited_content = await self.replace_emoji_mentions(message.content, message.guild)
+        
+        for embed in message.embeds:
+            if embed.title:
+                embed.title = await self.replace_emoji_mentions(embed.title, message.guild)
+            if embed.description:
+                embed.description = await self.replace_emoji_mentions(embed.description, message.guild)
+            if embed.footer and embed.footer.text:
+                embed.set_footer(text=await self.replace_emoji_mentions(embed.footer.text, message.guild))
+        
+        if message.embeds:
+            await outch.send(edited_content, embeds=message.embeds)
         else:
-            await outch.send(edited)
-        # remove emoji
-        for i in emoji_data:
-            await outch.guild.delete_emoji(get(message.guild.emojis, name=i[1]))
-            
+            await outch.send(edited_content)
+        
+        for emoji_url, emoji_name in emoji_data:
+            await outch.guild.delete_emoji(get(message.guild.emojis, name=emoji_name))
+                
     async def replace_emoji_mentions(self, message: str, guild) -> str:
         modified_content = message
         words = message.split()
