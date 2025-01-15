@@ -212,6 +212,7 @@ class ForwardMessage(commands.Cog):
             return
         
         for emoji_url, emoji_name in emoji_data:
+            await asyncio.sleep(1)
             await outch.guild.create_custom_emoji(name=emoji_name, image=await download_emoji_image(emoji_url))
         
         edited_content = await self.replace_emoji_mentions(message.content, message.guild)
