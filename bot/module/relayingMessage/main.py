@@ -91,6 +91,7 @@ class ForwardMessage(commands.Cog):
     )
     async def listforward(self, ctx: Context):
         """Display all active channel forwarding configurations."""
+        message = ""
         if not self.listenChannel:
             await ctx.send('No channels to forward to')
             return
@@ -98,8 +99,9 @@ class ForwardMessage(commands.Cog):
         count = 0
         for source, targets in self.listenChannel.items():
             targets_str = ', '.join(f'<#{target}>' for target in targets)
-            await ctx.send(f"{count}). <#{source}> forwarding to: {targets_str}")
+            message += f"{count}). <#{source}> forwarding to: {targets_str}"
             count += 1
+        await ctx.send(message)
     
     @commands.command(
         brief="Delete forwarding configuration",
@@ -154,17 +156,19 @@ class ForwardMessage(commands.Cog):
         
         # Forward to all target channels
         for target_id in self.listenChannel[message.channel.id]:
-            guild = get(self.client.guilds, id=message.guild.id)
-            if guild == None:
-                return
-            target = guild.get_channel_or_thread(target_id)
-            if target:
-                await self.echomsg(message, target)
+            target = self.client.get_channel(target_id)
+            print(target)
+            if not target:
+                try:
+                    target_id = await self.client.fetch_channel(target_id)  # Fetch from the API
+                except discord.NotFound:
+                    print("error channel can't be found")
+                    return
+                except discord.Forbidden:
+                    print("I do not have access to that channel")
+                    return
 
-            # if message.embeds:
-            #     for embed in message.embeds:
-            #         await outch.send(embed=embed)
-
+            await self.echomsg(message, target)
         
     async def echomsg(self, message: Message, outch: Union[TextChannel, Thread]):
         """
@@ -177,6 +181,10 @@ class ForwardMessage(commands.Cog):
         outch: Union[TextChannel, Thread]
             The target channel or thread to forward to
         """
+        print(outch)
+        if outch == None:
+            raise Exception("error outch is none")
+
         emoji_data = []
         emoji_data.extend(await parse_emoji(message.content))
         
@@ -195,8 +203,11 @@ class ForwardMessage(commands.Cog):
         if len(emoji_data) == 0:
             if message.content != None:
                 await outch.send(message.content)
-            if message.embeds != None:
+                
+            elif message.embeds != None:
                 await outch.send(embeds=message.embeds)
+            # print(message)
+            # await outch.send(message)
             return
         
         for emoji_url, emoji_name in emoji_data:
