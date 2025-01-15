@@ -17,6 +17,7 @@ from typing import Dict, List, Union
 import aiohttp
 import discord
 import yaml
+import asyncio
 from discord import Thread
 from discord.channel import TextChannel
 from discord.ext import commands
@@ -229,6 +230,7 @@ class ForwardMessage(commands.Cog):
             await outch.send(edited_content)
         
         for emoji_url, emoji_name in emoji_data:
+            await asyncio.sleep(3)
             await outch.guild.delete_emoji(get(message.guild.emojis, name=emoji_name))
                 
     async def replace_emoji_mentions(self, message: str, guild) -> str:
